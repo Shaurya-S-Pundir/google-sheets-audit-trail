@@ -32,7 +32,15 @@
  * @param {GoogleAppsScript.Events.SheetsOnEdit} e
  */
 function onEditTrigger(e) {
+  const lock = LockService.getDocumentLock();
+  let locked = false;
   try {
+    locked = lock.tryLock(30000); // Wait up to 30s for any pending audit operations
+    if (!locked) {
+      console.warn('[AuditTrail] onEditTrigger: Lock timeout. Skipping to prevent state corruption.');
+      return;
+    }
+
     if (!e || !e.range) return;
 
     const range = e.range;
@@ -82,6 +90,8 @@ function onEditTrigger(e) {
 
   } catch (err) {
     console.error('[AuditTrail] onEditTrigger error:', err.message, err.stack);
+  } finally {
+    if (locked) lock.releaseLock();
   }
 }
 
@@ -104,7 +114,15 @@ function onEditTrigger(e) {
  * @param {GoogleAppsScript.Events.SheetsOnChange} e
  */
 function onChangeTrigger(e) {
+  const lock = LockService.getDocumentLock();
+  let locked = false;
   try {
+    locked = lock.tryLock(30000); // Wait up to 30s
+    if (!locked) {
+      console.warn('[AuditTrail] onChangeTrigger: Lock timeout. Skipping to prevent state corruption.');
+      return;
+    }
+
     if (!e) return;
 
     const user = _getActiveUser();
@@ -146,6 +164,8 @@ function onChangeTrigger(e) {
 
   } catch (err) {
     console.error('[AuditTrail] onChangeTrigger error:', err.message, err.stack);
+  } finally {
+    if (locked) lock.releaseLock();
   }
 }
 
