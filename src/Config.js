@@ -47,15 +47,10 @@ const IGNORED_SHEET_PREFIXES = [
 const LOG_HEADERS = [
   'Timestamp',
   'User',
-  'Spreadsheet Name',
-  'Spreadsheet ID',
-  'Sheet',
-  'Cell',
   'Row',
   'Column',
   'Old Value',
   'New Value',
-  'Change Type',
 ];
 
 /** Total number of log columns — derived from LOG_HEADERS for safety. */

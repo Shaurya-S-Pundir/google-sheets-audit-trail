@@ -37,29 +37,20 @@ function ensureAuditLogSheet() {
  *
  * @param {Object} params
  * @param {string} params.user         - Email of the acting user (may be empty).
- * @param {string} params.sheetName    - Name of the sheet that changed.
- * @param {string} params.cell         - A1 notation of the affected cell (may be empty for structural ops).
- * @param {number} params.row          - 1-indexed row number (0 if not applicable).
- * @param {number} params.col          - 1-indexed column number (0 if not applicable).
+ * @param {number} params.row          - 1-indexed row number of the changed cell.
+ * @param {string} params.columnHeader - Header text from row 1 of the changed column.
  * @param {*}      params.oldValue     - Previous cell value.
  * @param {*}      params.newValue     - New cell value.
- * @param {string} params.changeType   - One of the CHANGE_TYPE constants.
  * @return {Array} A row array ready to be appended.
  */
 function buildLogRow(params) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
   return [
-    new Date(),                     // Timestamp
-    params.user || '',              // User
-    ss.getName(),                   // Spreadsheet Name
-    ss.getId(),                     // Spreadsheet ID
-    params.sheetName || '',         // Sheet
-    params.cell || '',              // Cell (A1 notation)
-    params.row || '',               // Row
-    params.col || '',               // Column
-    _formatValue(params.oldValue),  // Old Value
-    _formatValue(params.newValue),  // New Value
-    params.changeType || '',        // Change Type
+    new Date(),                          // Timestamp
+    params.user || '',                   // User
+    params.row || '',                    // Row
+    params.columnHeader || '',           // Column (header from row 1)
+    _formatValue(params.oldValue),       // Old Value
+    _formatValue(params.newValue),       // New Value
   ];
 }
 
@@ -111,13 +102,13 @@ function _applyHeaderRow(sheet) {
 
   sheet.setFrozenRows(1);
 
-  // Auto-resize columns for readability.
-  for (let i = 1; i <= LOG_COLUMN_COUNT; i++) {
-    sheet.setColumnWidth(i, 160);
-  }
-
-  // Give the Timestamp column a bit more room.
-  sheet.setColumnWidth(1, 200);
+  // Column widths for the simplified 6-column layout.
+  sheet.setColumnWidth(1, 180); // Timestamp
+  sheet.setColumnWidth(2, 200); // User
+  sheet.setColumnWidth(3, 60);  // Row
+  sheet.setColumnWidth(4, 180); // Column (header name)
+  sheet.setColumnWidth(5, 160); // Old Value
+  sheet.setColumnWidth(6, 160); // New Value
 }
 
 /**

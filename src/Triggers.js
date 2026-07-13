@@ -35,15 +35,15 @@ function onEditTrigger(e) {
   try {
     if (!e || !e.range) return;
 
-    const range     = e.range;
-    const sheet     = range.getSheet();
+    const range = e.range;
+    const sheet = range.getSheet();
     const sheetName = sheet.getName();
 
     // Skip internal sheets (audit log, snapshots).
     if (_isIgnoredSheet(sheetName)) return;
 
-    const user      = _getActiveUser();
-    const numCells  = range.getNumRows() * range.getNumColumns();
+    const user = _getActiveUser();
+    const numCells = range.getNumRows() * range.getNumColumns();
 
     let changes = [];
 
@@ -67,13 +67,13 @@ function onEditTrigger(e) {
 
     // Build log rows.
     const rows = changes.map(ch => buildLogRow({
-      user:       user,
-      sheetName:  sheetName,
-      cell:       ch.cell,
-      row:        ch.row,
-      col:        ch.col,
-      oldValue:   ch.oldValue,
-      newValue:   ch.newValue,
+      user: user,
+      sheetName: sheetName,
+      cell: ch.cell,
+      row: ch.row,
+      col: ch.col,
+      oldValue: ch.oldValue,
+      newValue: ch.newValue,
       changeType: ch.changeType,
     }));
 
@@ -110,7 +110,7 @@ function onChangeTrigger(e) {
   try {
     if (!e) return;
 
-    const user       = _getActiveUser();
+    const user = _getActiveUser();
     const changeType = e.changeType || 'OTHER';
 
     switch (changeType) {
@@ -165,7 +165,7 @@ function onChangeTrigger(e) {
  */
 function onOpenTrigger(e) {
   try {
-    const ss     = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheets = ss.getSheets();
 
     sheets.forEach(sheet => {
@@ -196,10 +196,10 @@ function onOpenTrigger(e) {
  *
  * @param {Object} e          - The onChange event.
  * @param {string} user       - Active user email.
- * @param {string} changeType - One of the INSERT_*/DELETE_* constants.
+ * @param {string} changeType - One of the INSERT_* / DELETE_* constants.
  */
 function _handleStructuralChange(e, user, changeType) {
-  const ss          = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
   const activeSheet = ss.getActiveSheet();
 
   if (!activeSheet || _isIgnoredSheet(activeSheet.getName())) return;
@@ -217,9 +217,9 @@ function _handleStructuralChange(e, user, changeType) {
  * @param {string} user - Active user email.
  */
 function _handleSheetCreate(user) {
-  const ss           = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
   const currentNames = _getCurrentSheetNames();
-  const storedNames  = _getStoredSheetNames();
+  const storedNames = _getStoredSheetNames();
 
   // The new sheet is in currentNames but not in storedNames.
   const newSheets = currentNames.filter(n => !storedNames.includes(n));
@@ -242,7 +242,7 @@ function _handleSheetCreate(user) {
  */
 function _handleSheetDelete(user) {
   const currentNames = _getCurrentSheetNames();
-  const storedNames  = _getStoredSheetNames();
+  const storedNames = _getStoredSheetNames();
 
   // Deleted sheets are in storedNames but not in currentNames.
   const deletedSheets = storedNames.filter(n => !currentNames.includes(n));
@@ -265,15 +265,15 @@ function _handleSheetDelete(user) {
  * @param {string} user - Active user email.
  */
 function _handlePossibleRename(user) {
-  const ss           = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
   const currentNames = _getCurrentSheetNames();
-  const storedNames  = _getStoredSheetNames();
+  const storedNames = _getStoredSheetNames();
 
   if (currentNames.length !== storedNames.length) return; // Not a rename.
 
   // Find names that disappeared and appeared.
   const removed = storedNames.filter(n => !currentNames.includes(n));
-  const added   = currentNames.filter(n => !storedNames.includes(n));
+  const added = currentNames.filter(n => !storedNames.includes(n));
 
   if (removed.length !== 1 || added.length !== 1) return; // Ambiguous — skip.
 
@@ -298,7 +298,7 @@ function _handlePossibleRename(user) {
  * @param {GoogleAppsScript.Spreadsheet.Range} range
  */
 function _refreshSnapshotForRange(sheet, range) {
-  const values   = range.getValues();
+  const values = range.getValues();
   const formulas = range.getFormulas();
   updateSnapshotRange(
     sheet.getName(),
@@ -324,13 +324,13 @@ function _refreshSnapshotForRange(sheet, range) {
  */
 function _logStructuralEntry(user, sheetName, oldValue, newValue, changeType) {
   const row = buildLogRow({
-    user:       user,
-    sheetName:  sheetName,
-    cell:       '',
-    row:        '',
-    col:        '',
-    oldValue:   oldValue,
-    newValue:   newValue,
+    user: user,
+    sheetName: sheetName,
+    cell: '',
+    row: '',
+    col: '',
+    oldValue: oldValue,
+    newValue: newValue,
     changeType: changeType,
   });
   logEntries([row]);
@@ -359,7 +359,7 @@ function _getCurrentSheetNames() {
 function _getStoredSheetNames() {
   try {
     const stored = PropertiesService.getScriptProperties()
-                                    .getProperty(PROP_SHEET_NAMES);
+      .getProperty(PROP_SHEET_NAMES);
     return stored ? JSON.parse(stored) : [];
   } catch (_) {
     return [];
@@ -372,7 +372,7 @@ function _getStoredSheetNames() {
 function _persistSheetNames() {
   const names = _getCurrentSheetNames();
   PropertiesService.getScriptProperties()
-                   .setProperty(PROP_SHEET_NAMES, JSON.stringify(names));
+    .setProperty(PROP_SHEET_NAMES, JSON.stringify(names));
 }
 
 // ============================================================
