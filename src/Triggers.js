@@ -65,16 +65,13 @@ function onEditTrigger(e) {
       return;
     }
 
-    // Build log rows.
+    // Build log rows — convert column index to letter (A, B, … AA, AB, …).
     const rows = changes.map(ch => buildLogRow({
-      user: user,
-      sheetName: sheetName,
-      cell: ch.cell,
-      row: ch.row,
-      col: ch.col,
-      oldValue: ch.oldValue,
-      newValue: ch.newValue,
-      changeType: ch.changeType,
+      user:         user,
+      row:          ch.row,
+      columnHeader: _colIndexToLetter(ch.col),
+      oldValue:     ch.oldValue,
+      newValue:     ch.newValue,
     }));
 
     // Write all entries in one batch.
@@ -324,14 +321,11 @@ function _refreshSnapshotForRange(sheet, range) {
  */
 function _logStructuralEntry(user, sheetName, oldValue, newValue, changeType) {
   const row = buildLogRow({
-    user: user,
-    sheetName: sheetName,
-    cell: '',
-    row: '',
-    col: '',
-    oldValue: oldValue,
-    newValue: newValue,
-    changeType: changeType,
+    user:         user,
+    row:          '',
+    columnHeader: '',
+    oldValue:     oldValue,
+    newValue:     newValue,
   });
   logEntries([row]);
 }
@@ -389,16 +383,49 @@ function _isIgnoredSheet(name) {
 }
 
 /**
- * Attempts to get the active user's email. Returns an empty string in
- * contexts where this is not permitted (e.g. simple triggers).
- * @return {string}
+ * Resolves the active user's email with a 3-step fallback:
+ *   1. Session.getActiveUser().getEmail()   — works for installable triggers.
+ *   2. Session.getEffectiveUser().getEmail() — works in some add-on contexts.
+ *   3. 'Unknown User'                        — last resort; never blank.
+ *
+ * @return {string} Email address or 'Unknown User'.
  */
 function _getActiveUser() {
   try {
-    return Session.getActiveUser().getEmail() || '';
-  } catch (_) {
-    return '';
+    const email = Session.getActiveUser().getEmail();
+    if (email) return email;
+  } catch (_) {}
+
+  try {
+    const email = Session.getEffectiveUser().getEmail();
+    if (email) return email;
+  } catch (_) {}
+
+  return 'Unknown User';
+}
+
+/**
+ * Converts a 1-indexed column number to its spreadsheet letter notation.
+ * Supports single and multi-letter columns (A … Z, AA … AZ, AAA …).
+ *
+ * Examples:
+ *   1  → "A"
+ *   26 → "Z"
+ *   27 → "AA"
+ *   28 → "AB"
+ *
+ * @param {number} col - 1-indexed column number.
+ * @return {string} Column letter(s), e.g. "A", "Z", "AA".
+ */
+function _colIndexToLetter(col) {
+  let letter = '';
+  let n = col;
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    letter = String.fromCharCode(65 + rem) + letter;
+    n = Math.floor((n - 1) / 26);
   }
+  return letter;
 }
 
 /**
