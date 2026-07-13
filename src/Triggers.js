@@ -288,23 +288,32 @@ function _handlePossibleRename(user) {
 // ============================================================
 
 /**
- * Refreshes the snapshot for the exact range that was just edited.
- * This is much cheaper than re-snapshotting the entire sheet.
+ * Re-syncs the snapshot for every row touched by the most recent edit.
+ *
+ * Rather than writing only the exact edited cells, we re-read the FULL
+ * column extent of each affected row from the live sheet and write that
+ * entire row slice back to the snapshot. This guarantees that the snapshot
+ * row is always overwritten with fresh data after each edit, eliminating
+ * any cell-level drift that could arise from partial updates being missed.
  *
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @param {GoogleAppsScript.Spreadsheet.Range} range
  */
 function _refreshSnapshotForRange(sheet, range) {
-  const values = range.getValues();
-  const formulas = range.getFormulas();
-  updateSnapshotRange(
-    sheet.getName(),
-    range.getRow(),
-    range.getColumn(),
-    values,
-    formulas
-  );
+  const startRow = range.getRow();
+  const numRows  = range.getNumRows();
+  const lastCol  = Math.max(sheet.getLastColumn(), 1);
+
+  // Fetch the full row width (columns 1 … lastCol) for all affected rows.
+  const fullRange = sheet.getRange(startRow, 1, numRows, lastCol);
+  const values    = fullRange.getValues();
+  const formulas  = fullRange.getFormulas();
+
+  // Always start at column 1 so the snapshot is written with the same
+  // coordinate origin as the live sheet, keeping indices aligned.
+  updateSnapshotRange(sheet.getName(), startRow, 1, values, formulas);
 }
+
 
 // ============================================================
 // Private — logging helpers

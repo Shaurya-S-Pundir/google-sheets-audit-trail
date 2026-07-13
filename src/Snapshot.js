@@ -65,9 +65,18 @@ function initializeSnapshot(sheet) {
 }
 
 /**
- * Updates only a sub-range of the value snapshot for a sheet.
+ * Updates only a sub-range of the value and formula snapshots for a sheet.
  * Used after an edit/paste to keep the snapshot in sync without
  * re-reading the entire sheet.
+ *
+ * IMPORTANT: This function deliberately does NOT call insertRowsAfter /
+ * insertColumnsAfter. Those structural operations fire Apps Script's onChange
+ * event with INSERT_ROW / INSERT_COLUMN, which triggers onChangeTrigger →
+ * _handleStructuralChange → initializeSnapshot. That cascade would overwrite
+ * the very snapshot we are trying to update, causing stale old-value reads.
+ *
+ * Instead, capacity is verified against the sheet's existing dimensions, and
+ * a full re-snapshot is used as the safe fallback when expansion is needed.
  *
  * @param {string}   sheetName  - The name of the source sheet.
  * @param {number}   startRow   - 1-indexed start row of the updated range.
@@ -76,25 +85,53 @@ function initializeSnapshot(sheet) {
  * @param {Array[]}  formulas   - 2D formulas to write into the snapshot.
  */
 function updateSnapshotRange(sheetName, startRow, startCol, values, formulas) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!values || values.length === 0) return;
+  const numRows = values.length;
+  const numCols = (values[0] && values[0].length) ? values[0].length : 0;
+  if (numCols === 0) return;
 
-  _ensureSnapshotSheetCapacity(
-    SNAPSHOT_SHEET_PREFIX   + sheetName, startRow, startCol, values
-  );
-  _ensureSnapshotSheetCapacity(
-    SNAPSHOT_FORMULA_PREFIX + sheetName, startRow, startCol, formulas
-  );
-
+  const ss      = SpreadsheetApp.getActiveSpreadsheet();
   const valSnap = ss.getSheetByName(SNAPSHOT_SHEET_PREFIX   + sheetName);
   const fmlSnap = ss.getSheetByName(SNAPSHOT_FORMULA_PREFIX + sheetName);
 
-  if (valSnap && values.length > 0 && values[0].length > 0) {
-    valSnap.getRange(startRow, startCol, values.length, values[0].length)
-           .setValues(values);
+  // If either companion sheet is missing, recreate everything from scratch.
+  if (!valSnap || !fmlSnap) {
+    const source = ss.getSheetByName(sheetName);
+    if (source) initializeSnapshot(source);
+    return;
   }
-  if (fmlSnap && formulas.length > 0 && formulas[0].length > 0) {
-    fmlSnap.getRange(startRow, startCol, formulas.length, formulas[0].length)
-           .setValues(formulas);
+
+  const neededRows = startRow + numRows - 1;
+  const neededCols = startCol + numCols - 1;
+
+  // If the update would exceed the snapshot sheet's current grid size,
+  // fall back to a full re-snapshot rather than inserting rows/columns
+  // (which would trigger spurious onChange events).
+  if (valSnap.getMaxRows() < neededRows || valSnap.getMaxColumns() < neededCols) {
+    const source = ss.getSheetByName(sheetName);
+    if (source) initializeSnapshot(source);
+    return;
+  }
+
+  // Partial update: write only the cells that were affected.
+  try {
+    valSnap.getRange(startRow, startCol, numRows, numCols).setValues(values);
+  } catch (err) {
+    console.error('[AuditTrail] Snapshot value write failed, re-snapshotting:', err.message);
+    const source = ss.getSheetByName(sheetName);
+    if (source) initializeSnapshot(source);
+    return;
+  }
+
+  try {
+    if (formulas && formulas.length > 0 && formulas[0] && formulas[0].length > 0) {
+      fmlSnap.getRange(startRow, startCol, formulas.length, formulas[0].length)
+             .setValues(formulas);
+    }
+  } catch (err) {
+    console.error('[AuditTrail] Snapshot formula write failed, re-snapshotting:', err.message);
+    const source = ss.getSheetByName(sheetName);
+    if (source) initializeSnapshot(source);
   }
 }
 
@@ -148,11 +185,16 @@ function _readSnapshot(snapSheetName) {
  * Writes a 2D array to a snapshot sheet. Creates the sheet if missing.
  * The sheet is hidden immediately after creation.
  *
+ * Row/column expansion (insertRowsAfter / insertColumnsAfter) is intentionally
+ * confined to this initialisation path. It is NOT performed during incremental
+ * updates (see updateSnapshotRange) to avoid triggering spurious onChange
+ * events on every edit.
+ *
  * @param {string}  snapSheetName - Internal snapshot sheet name.
  * @param {Array[]} data          - 2D array to write.
  */
 function _writeSnapshot(snapSheetName, data) {
-  if (!data || data.length === 0) return;
+  if (!data || data.length === 0 || !data[0] || data[0].length === 0) return;
 
   const ss    = SpreadsheetApp.getActiveSpreadsheet();
   let   sheet = ss.getSheetByName(snapSheetName);
@@ -162,35 +204,25 @@ function _writeSnapshot(snapSheetName, data) {
     sheet.hideSheet();
   }
 
-  // Clear the sheet first, then write fresh data.
+  const neededRows = data.length;
+  const neededCols = data[0].length;
+
+  // Expand the sheet grid if the data exceeds its current dimensions.
+  // These structural operations are acceptable here because _writeSnapshot
+  // is only called during initializeSnapshot (startup / open / structural
+  // change events), not on every user edit.
+  if (sheet.getMaxRows() < neededRows) {
+    sheet.insertRowsAfter(sheet.getMaxRows(), neededRows - sheet.getMaxRows());
+  }
+  if (sheet.getMaxColumns() < neededCols) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), neededCols - sheet.getMaxColumns());
+  }
+
+  // Clear all previous content, then write the fresh snapshot.
   sheet.clearContents();
-  sheet.getRange(1, 1, data.length, data[0].length).setValues(data);
+  sheet.getRange(1, 1, neededRows, neededCols).setValues(data);
 }
 
-/**
- * Ensures the snapshot sheet has enough rows/cols for the given range.
- * Expands the sheet by appending blank rows/cols if needed.
- *
- * @param {string}  snapSheetName
- * @param {number}  startRow
- * @param {number}  startCol
- * @param {Array[]} data          - 2D data that will be written (used for size).
- */
-function _ensureSnapshotSheetCapacity(snapSheetName, startRow, startCol, data) {
-  const ss    = SpreadsheetApp.getActiveSpreadsheet();
-  let   sheet = ss.getSheetByName(snapSheetName);
-
-  if (!sheet) {
-    sheet = ss.insertSheet(snapSheetName);
-    sheet.hideSheet();
-  }
-
-  const neededRows = startRow + (data.length       || 0) - 1;
-  const neededCols = startCol + (data[0]?.length   || 0) - 1;
-
-  if (sheet.getMaxRows()    < neededRows) sheet.insertRowsAfter(sheet.getMaxRows(), neededRows - sheet.getMaxRows());
-  if (sheet.getMaxColumns() < neededCols) sheet.insertColumnsAfter(sheet.getMaxColumns(), neededCols - sheet.getMaxColumns());
-}
 
 /**
  * Deletes a snapshot sheet by its internal name (if it exists).
